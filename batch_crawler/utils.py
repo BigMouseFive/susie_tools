@@ -12,7 +12,6 @@ from typing import List, Dict, Any, Optional
 import pandas as pd
 from config import (
     INPUT_DIR, OUTPUT_DIR, DEFAULT_INPUT_FILE, DEFAULT_OUTPUT_FILE,
-    USER_AGENTS, ROTATE_UA
 )
 
 
@@ -20,13 +19,6 @@ def ensure_dirs():
     """确保输入输出目录存在"""
     os.makedirs(INPUT_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-
-def get_random_ua() -> str:
-    """获取随机 User-Agent"""
-    if ROTATE_UA and USER_AGENTS:
-        return random.choice(USER_AGENTS)
-    return USER_AGENTS[0] if USER_AGENTS else ""
 
 
 def parse_asin_from_url(url: str) -> Optional[str]:

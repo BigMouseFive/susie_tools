@@ -8,14 +8,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ===================== 并发控制 =====================
-# 同时运行的浏览器实例数量（每个实例独立进程，完全隔离）
-CONCURRENCY = int(os.getenv("CONCURRENCY", "2"))
-
-# 每个浏览器实例处理的 URL 数量（达到后重启，清理所有状态）
-# 设为 1 表示每个 URL 都用全新浏览器，成功率最高但速度稍慢
-BATCH_SIZE_PER_BROWSER = int(os.getenv("BATCH_SIZE_PER_BROWSER", "1"))
-
 # ===================== 延迟配置 =====================
 # 每个请求前的随机延迟范围（秒）
 DELAY_MIN = float(os.getenv("DELAY_MIN", "2.0"))
@@ -28,12 +20,6 @@ RETRY_BASE_DELAY = float(os.getenv("RETRY_BASE_DELAY", "2.0"))
 # 页面加载超时（毫秒）
 PAGE_TIMEOUT = int(os.getenv("PAGE_TIMEOUT", "25000"))
 
-# 智能等待：关键元素轮询总超时（毫秒）
-SMART_WAIT_TIMEOUT = int(os.getenv("SMART_WAIT_TIMEOUT", "10000"))
-
-# 智能等待：轮询间隔（毫秒）
-SMART_WAIT_INTERVAL = int(os.getenv("SMART_WAIT_INTERVAL", "500"))
-
 # ===================== 重试配置 =====================
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 
@@ -41,20 +27,6 @@ MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 # 代理服务器地址，格式: http://user:pass@host:port
 # 留空则不使用代理
 PROXY_SERVER = os.getenv("PROXY_SERVER", "")
-
-# 是否轮换 User-Agent
-ROTATE_UA = os.getenv("ROTATE_UA", "true").lower() == "true"
-
-# ===================== 浏览器配置 =====================
-# 是否使用无头模式（headless）
-HEADLESS = os.getenv("HEADLESS", "true").lower() == "true"
-
-# 浏览器窗口尺寸
-VIEWPORT_WIDTH = int(os.getenv("VIEWPORT_WIDTH", "1280"))
-VIEWPORT_HEIGHT = int(os.getenv("VIEWPORT_HEIGHT", "800"))
-
-# 是否拦截非必要资源（图片/CSS/字体等）加速加载
-BLOCK_UNNECESSARY_RESOURCES = os.getenv("BLOCK_UNNECESSARY_RESOURCES", "true").lower() == "true"
 
 # ===================== 路径配置 =====================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -1,7 +1,6 @@
 """
-基于 curl_cffi 的 Seller ID 批量提取爬虫（HTTP 快速通道）
-模拟 Chrome TLS 指纹 + HTTP/2，绕过亚马逊反爬检测
-与 crawler.py（Playwright）配合，作为 Hybrid 方案的第一轮
+基于 curl_cffi 的 Seller ID 批量提取爬虫
+模拟 Chrome TLS 指纹 + HTTP/2 + 完整浏览器请求头，绕过亚马逊反爬检测
 """
 
 import random
