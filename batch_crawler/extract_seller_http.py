@@ -354,10 +354,9 @@ def is_incomplete_page(soup: BeautifulSoup) -> bool:
     return missing_count >= 3
 
 
-def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
+def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
     """
-    从亚马逊商品页 HTML 中提取 Seller ID
-    返回与 extract_seller.js 一致的字典格式
+    从亚马逊商品页 HTML 中提取 Seller ID（内部实现）
     """
     result = {
         "asin": None,
@@ -446,12 +445,11 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
             if sid:
                 result["sellerId"] = sid
                 result["extractionMethod"] = "script_json"
-                return result
-            sid = find_seller_in_inputs(soup)
-            if sid:
-                result["sellerId"] = sid
-                result["extractionMethod"] = "hidden_input"
-                return result
+            else:
+                sid = find_seller_in_inputs(soup)
+                if sid:
+                    result["sellerId"] = sid
+                    result["extractionMethod"] = "hidden_input"
 
     # ===== 提取策略（按优先级） =====
 
@@ -518,4 +516,20 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
         if result["extractionMethod"]:
             result["extractionMethod"] = result["extractionMethod"] + "_on_unavailable"
 
+    return result
+
+
+def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
+    """
+    从亚马逊商品页 HTML 中提取 Seller ID
+    返回与 extract_seller.js 一致的字典格式
+    后处理：incomplete_page / unavailable 页面若提取到 seller_id，覆盖为 normal
+    """
+    result = _extract_seller_from_html_impl(html, url)
+    # 后处理：如果页面被标记为异常但最终提取到了 seller_id，视为成功
+    original_status = result.get("pageStatus", "")
+    if original_status in ("incomplete_page", "unavailable") and result.get("sellerId"):
+        result["pageStatus"] = "normal"
+        if result.get("extractionMethod"):
+            result["extractionMethod"] = result["extractionMethod"] + "_on_" + original_status
     return result
