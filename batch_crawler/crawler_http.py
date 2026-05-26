@@ -137,10 +137,13 @@ def process_single_url_http(
     for attempt in range(1, max_retries + 1):
         try:
             headers = get_random_headers(url)
+            # captcha 后的重试使用更长超时
+            is_captcha_retry = attempt > 1 and html and 'security check' in html.lower()
+            timeout = 40 if is_captcha_retry else config.PAGE_TIMEOUT / 1000
             response = session.get(
                 url,
                 headers=headers,
-                timeout=config.PAGE_TIMEOUT / 1000,
+                timeout=timeout,
             )
             response.raise_for_status()
 

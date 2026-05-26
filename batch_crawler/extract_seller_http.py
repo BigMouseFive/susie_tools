@@ -412,7 +412,15 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
     if 'page not found' in title_text or 'sorry, we just need to make sure' in body_text:
         result["pageStatus"] = "page_not_found"
         return result
-    if any(kw in body_text for kw in ('verify you are a human', 'captcha', 'robot check', 'type the characters', 'security check')):
+    # Captcha 检测：需要同时满足文本关键词 + 页面特征
+    captcha_keywords = [
+        'verify you are a human', 'captcha', 'robot check',
+        'type the characters', 'enter the characters', 'type the letters',
+    ]
+    has_captcha_text = any(kw in body_text for kw in captcha_keywords)
+    # captcha 页面通常是简化页面（缺少标题或购买按钮）
+    is_simplified_page = not bool(soup.find(id='productTitle')) or not bool(soup.find(id='add-to-cart-button'))
+    if has_captcha_text and is_simplified_page:
         result["pageStatus"] = "captcha"
         return result
 
