@@ -55,6 +55,36 @@ def find_seller_in_scripts(soup: BeautifulSoup) -> Optional[str]:
 
     for script in soup.find_all('script'):
         text = script.string or ''
+        script_type = (script.get('type') or '').lower()
+
+        # 处理 Amazon a-state 脚本（页面全局状态数据）
+        if script_type == 'a-state':
+            try:
+                data = json.loads(text)
+                # 递归搜索 merchant/seller 字段
+                def _search_a_state(obj):
+                    if isinstance(obj, dict):
+                        for k, v in obj.items():
+                            if isinstance(v, str) and re.match(r'^[A-Z0-9]{5,}$', v):
+                                if any(sk in k.lower() for sk in ('merchant', 'seller', 'winningmerchant')):
+                                    return v
+                            found = _search_a_state(v)
+                            if found:
+                                return found
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            found = _search_a_state(item)
+                            if found:
+                                return found
+                    return None
+
+                found = _search_a_state(data)
+                if found:
+                    return found
+            except (json.JSONDecodeError, Exception):
+                pass
+            continue
+
         if not text.strip():
             continue
 
@@ -64,9 +94,8 @@ def find_seller_in_scripts(soup: BeautifulSoup) -> Optional[str]:
             if m:
                 return m.group(1)
 
-        # 尝试解析 JSON 数据（a-state, a-expander 等）
+        # 尝试解析 JSON 数据（a-expander 等）
         try:
-            # 查找可能的 JSON 子串
             for json_match in re.finditer(r'\{[^{}]*"(?:merchant|seller)[^}]*\}', text, re.I):
                 try:
                     data = json.loads(json_match.group())
@@ -282,37 +311,47 @@ def is_incomplete_page(soup: BeautifulSoup) -> bool:
     """
     检测页面是否被截断/不完整（反爬返回的假页面）
     正常商品页应包含标题、价格等核心元素
+    阈值较严格：只有当标题、价格、购买按钮全部缺失时才判定为截断
     """
-    # 检查是否有商品标题
+    # 检查是否有商品标题（多种变体）
     has_title = bool(
         soup.find(id='productTitle') or
         soup.find(id='title') or
+        soup.find(id='productTitle_feature_div') or
+        soup.find(id='titleSection') or
         soup.find('h1', class_=re.compile(r'product|title', re.I)) or
-        soup.find(id='btAsinTitle')
+        soup.find(id='btAsinTitle') or
+        soup.find('h1', {'data-automation-id': 'title'}) or
+        soup.find(attrs={'data-testid': re.compile(r'title', re.I)})
     )
 
-    # 检查是否有价格相关元素
+    # 检查是否有价格相关元素（多种变体）
     has_price = bool(
         soup.find(id='corePrice_feature_div') or
         soup.find(id='priceblock_ourprice') or
         soup.find(id='priceblock_dealprice') or
+        soup.find(id='newBuyBoxPrice') or
+        soup.find(id='price_inside_buybox') or
         soup.find(class_=re.compile(r'a-price|a-offscreen', re.I)) or
-        soup.find(id='newBuyBoxPrice')
+        soup.find(attrs={'data-a-color': 'price'}) or
+        soup.find(id='tp_price_block_total_price_ww')
     )
 
-    # 检查是否有购买按钮/表单
+    # 检查是否有购买按钮/表单（多种变体）
     has_buy_button = bool(
         soup.find(id='add-to-cart-button') or
         soup.find(id='submit.add-to-cart') or
         soup.find(id='buy-now-button') or
+        soup.find(id='atc-declarative') or
         soup.find('input', {'name': 'submit.add-to-cart'}) or
-        soup.find('span', {'id': re.compile(r'submit\.add-to-cart', re.I)})
+        soup.find('span', {'id': re.compile(r'submit\.add-to-cart', re.I)}) or
+        soup.find('input', {'data-testid': re.compile(r'add-to-cart', re.I)}) or
+        soup.find(attrs={'data-feature-name': 'addtocart'})
     )
 
-    # 如果同时缺少标题、价格、购买按钮，认为页面不完整
-    # 但要有一定的容错：某些页面可能价格放在 JS 中动态加载
+    # 只有当标题、价格、购买按钮全部缺失时才判定为截断
     missing_count = sum(not x for x in [has_title, has_price, has_buy_button])
-    return missing_count >= 2
+    return missing_count >= 3
 
 
 def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
@@ -343,9 +382,11 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
         result["title"] = title_tag.get_text(strip=True)
 
     # 检测页面是否不完整（反爬返回的假页面）
-    if is_incomplete_page(soup):
+    page_is_incomplete = is_incomplete_page(soup)
+    if page_is_incomplete:
         result["pageStatus"] = "incomplete_page"
-        return result
+        # 注意：不直接 return，继续尝试提取
+        # 某些"截断"页面仍然包含 seller 信息
 
     # 检测页面异常状态
     body_text = soup.get_text(separator=' ', strip=True).lower()
@@ -454,5 +495,11 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
     if sname and not result["sellerName"]:
         result["sellerName"] = sname
         result["extractionMethod"] = "text_fallback"
+
+    # 如果页面被标记为 incomplete_page 但最终提取到了 seller_id，视为成功
+    if page_is_incomplete and result["sellerId"]:
+        result["pageStatus"] = "normal"
+        if result["extractionMethod"]:
+            result["extractionMethod"] = result["extractionMethod"] + "_on_incomplete"
 
     return result
