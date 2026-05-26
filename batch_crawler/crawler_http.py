@@ -1,14 +1,16 @@
 """
 基于 curl_cffi 的 Seller ID 批量提取爬虫
 模拟 Chrome TLS 指纹 + HTTP/2 + 完整浏览器请求头，绕过亚马逊反爬检测
+支持多轮重试：失败 URL 自动进入下一轮重新处理
 """
 
 import random
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from urllib.parse import urlparse
+from pathlib import Path
 
 from curl_cffi import requests
 from tqdm import tqdm
@@ -18,7 +20,7 @@ import hashlib
 from extract_seller_http import extract_seller_from_html
 from utils import (
     ensure_dirs, parse_asin_from_url,
-    load_urls, load_existing_results, save_results, filter_pending_urls
+    load_urls, load_existing_results, save_results
 )
 
 # 线程本地存储，每个线程独立的 Session
@@ -69,18 +71,16 @@ def _get_session() -> requests.Session:
     return _thread_local.session
 
 
-_DIAGNOSE_DIR = None  # 诊断目录，由 --diagnose 设置
+_DIAGNOSE_DIR = None  # 诊断目录
 
 
 def _save_diagnose_html(url: str, html: str, status: str):
-    """保存诊断 HTML（仅在 --diagnose 模式下）"""
+    """保存诊断 HTML"""
     if not _DIAGNOSE_DIR:
         return
     try:
-        from pathlib import Path
         diag_dir = Path(_DIAGNOSE_DIR)
         diag_dir.mkdir(parents=True, exist_ok=True)
-        # 用 URL 的 hash 作为文件名
         url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
         asin = parse_asin_from_url(url) or url_hash
         filename = f"{status}_{asin}_{url_hash}.html"
@@ -186,27 +186,18 @@ def process_single_url_http(
     return result
 
 
-def run_crawler_http(
+def _run_single_round(
     urls: List[str],
-    output_path: str = None,
-    max_workers: int = 10,
-) -> List[Dict[str, Any]]:
+    max_workers: int,
+    round_num: int,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    HTTP 批量爬虫主入口
-    返回所有 URL 的处理结果列表
+    处理单轮 URL
+    返回: (成功结果列表, 失败结果列表)
     """
-    output_path = output_path or config.DEFAULT_OUTPUT_FILE
-    ensure_dirs()
-
     total = len(urls)
-    print(f"[HTTP] 总 URL 数: {total}")
-
-    if not urls:
-        return []
-
-    results = []
-    batch_results = []
-    flush_interval = 10
+    success_results = []
+    failed_results = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_url = {
@@ -214,60 +205,159 @@ def run_crawler_http(
             for url in urls
         }
 
-        pbar = tqdm(total=total, desc="[HTTP] 提取 Seller ID", unit="页")
+        pbar = tqdm(
+            total=total,
+            desc=f"[HTTP 第{round_num + 1}轮]",
+            unit="页",
+        )
+        fail_count = 0
+
         for future in as_completed(future_to_url):
             result = future.result()
-            results.append(result)
-            batch_results.append(result)
+            if result.get("status") == "success" and result.get("seller_id"):
+                success_results.append(result)
+            else:
+                failed_results.append(result)
+                fail_count += 1
+            pbar.set_postfix(failed=fail_count)
             pbar.update(1)
-
-            # 实时保存
-            if len(batch_results) >= flush_interval:
-                save_results(batch_results, output_path, mode="a")
-                batch_results.clear()
 
         pbar.close()
 
-    # 刷新剩余结果
-    if batch_results:
-        save_results(batch_results, output_path, mode="a")
+    return success_results, failed_results
 
-    # 统计
-    success_count = sum(1 for r in results if r.get("status") == "success" and r.get("seller_id"))
-    failed_count = sum(1 for r in results if r.get("status") in ("failed", "error"))
-    captcha_count = sum(1 for r in results if r.get("status") == "captcha")
-    no_seller_count = sum(1 for r in results if r.get("status") == "no_seller_id")
-    incomplete_count = sum(1 for r in results if r.get("status") == "incomplete_page")
-    unavailable_count = sum(1 for r in results if r.get("status") == "unavailable")
-    shipping_count = sum(1 for r in results if r.get("status") == "shipping_restricted")
+
+def _print_failed_results(results: List[Dict[str, Any]]):
+    """命令行输出失败详情"""
+    failed = [r for r in results if r.get("status") != "success" or not r.get("seller_id")]
+    if not failed:
+        return
+
+    print("\n" + "=" * 80)
+    print("❌ 失败详情（未写入 CSV）")
+    print("=" * 80)
+    print(f"{'URL':<50} | {'状态':<18} | 错误信息")
+    print("-" * 80)
+    for r in failed:
+        url = r.get("url", "")[:48]
+        status = r.get("status", "")[:16]
+        error = r.get("error", "")[:40]
+        print(f"{url:<50} | {status:<18} | {error}")
+    print("=" * 80)
+
+
+def run_crawler_http(
+    urls: List[str],
+    output_path: str = None,
+    max_workers: int = 10,
+    max_rounds: int = 1,
+) -> List[Dict[str, Any]]:
+    """
+    HTTP 批量爬虫主入口（支持多轮重试）
+
+    Args:
+        urls: URL 列表
+        output_path: 输出 CSV 路径（只写入成功结果）
+        max_workers: 并发线程数
+        max_rounds: 轮次重试次数（默认 1，即不重试）
+
+    Returns:
+        所有 URL 的最新结果列表
+    """
+    output_path = output_path or config.DEFAULT_OUTPUT_FILE
+    ensure_dirs()
+
+    total_initial = len(urls)
+    print(f"[HTTP] 总 URL 数: {total_initial}，轮次: {max_rounds}")
+
+    if not urls:
+        return []
+
+    # 清空输出文件并写入表头
+    out_path = Path(output_path)
+    if out_path.exists():
+        out_path.unlink()
+    save_results([], output_path, mode="w")
+
+    all_results: Dict[str, Dict[str, Any]] = {}  # url -> 最新结果
+    pending = urls[:]
+
+    for round_num in range(max_rounds):
+        if not pending:
+            break
+
+        success_results, failed_results = _run_single_round(
+            pending, max_workers, round_num
+        )
+
+        # 成功结果写入 CSV
+        if success_results:
+            save_results(success_results, output_path, mode="a")
+
+        # 更新所有结果（成功和失败都保留最新）
+        for r in success_results + failed_results:
+            all_results[r["url"]] = r
+
+        # 准备下一轮：收集失败的 URL
+        failed_urls = [r["url"] for r in failed_results]
+
+        if round_num < max_rounds - 1 and failed_urls:
+            print(f"\n>>> 第 {round_num + 2} 轮重试: {len(failed_urls)} 个 URL")
+            pending = failed_urls[:]
+            time.sleep(3)  # 轮次间冷却
+        else:
+            break
+
+    results_list = list(all_results.values())
+
+    # 最终统计
+    success_count = sum(
+        1 for r in results_list
+        if r.get("status") == "success" and r.get("seller_id")
+    )
+    failed_count = sum(
+        1 for r in results_list
+        if r.get("status") in ("failed", "error")
+    )
+    captcha_count = sum(1 for r in results_list if r.get("status") == "captcha")
+    no_seller_count = sum(1 for r in results_list if r.get("status") == "no_seller_id")
+    incomplete_count = sum(1 for r in results_list if r.get("status") == "incomplete_page")
+    unavailable_count = sum(1 for r in results_list if r.get("status") == "unavailable")
+    shipping_count = sum(1 for r in results_list if r.get("status") == "shipping_restricted")
 
     print(f"\n[HTTP] 完成！")
-    print(f"   成功提取: {success_count}/{total} ({success_count / total * 100:.1f}%)")
-    print(f"   页面不完整(需浏览器兜底): {incomplete_count}")
+    print(f"   成功提取: {success_count}/{total_initial} ({success_count / total_initial * 100:.1f}%)")
+    if max_rounds > 1:
+        print(f"   最终失败: {total_initial - success_count}")
+    print(f"   页面不完整: {incomplete_count}")
     print(f"   未检测到 Seller ID: {no_seller_count}")
     print(f"   商品不可用: {unavailable_count}")
     print(f"   地区限制: {shipping_count}")
     print(f"   验证码/反爬: {captcha_count}")
     print(f"   网络失败: {failed_count}")
 
-    return results
+    # 命令行输出失败详情
+    _print_failed_results(results_list)
+
+    return results_list
 
 
 def main():
     """CLI 入口（独立运行 HTTP 爬虫）"""
     import argparse
-    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="亚马逊 Seller ID HTTP 批量提取工具")
     parser.add_argument("--input", "-i", help="输入文件路径", default=config.DEFAULT_INPUT_FILE)
     parser.add_argument("--output", "-o", help="输出文件路径", default=config.DEFAULT_OUTPUT_FILE)
     parser.add_argument("--workers", "-w", type=int, help="并发线程数", default=10)
     parser.add_argument("--proxy", help="代理服务器地址", default=config.PROXY_SERVER)
-    parser.add_argument("--diagnose", "-d", help="诊断模式：保存 no_seller_id 的 HTML 到指定目录", default=None)
+    parser.add_argument("--retries", "-r", type=int, help="轮次重试次数（默认 3）", default=3)
+    parser.add_argument("--diagnose", "-d", help="诊断模式目录（默认 diagnose）", default="diagnose")
+    parser.add_argument("--no-diagnose", action="store_true", help="禁用诊断模式")
     args = parser.parse_args()
 
     global _DIAGNOSE_DIR
-    _DIAGNOSE_DIR = args.diagnose
+    _DIAGNOSE_DIR = None if args.no_diagnose else args.diagnose
 
     if args.proxy:
         config.PROXY_SERVER = args.proxy
@@ -279,12 +369,12 @@ def main():
     urls = load_urls(args.input)
     print(f"加载到 {len(urls)} 个 URL")
 
-    # 清空输出文件并写入表头
-    if Path(args.output).exists():
-        Path(args.output).unlink()
-    save_results([], args.output, mode="w")
-
-    run_crawler_http(urls, output_path=args.output, max_workers=args.workers)
+    run_crawler_http(
+        urls,
+        output_path=args.output,
+        max_workers=args.workers,
+        max_rounds=args.retries + 1,  # retries=3 表示最多 4 轮（初始 + 3 次重试）
+    )
 
 
 if __name__ == "__main__":

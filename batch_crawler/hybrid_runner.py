@@ -18,6 +18,7 @@ def run_crawler(
     urls: List[str],
     output_path: str = None,
     max_workers: int = 10,
+    max_rounds: int = 1,
 ):
     """
     批量爬虫主入口
@@ -59,21 +60,18 @@ def run_crawler(
         pending_urls,
         output_path=output_path,
         max_workers=max_workers,
+        max_rounds=max_rounds,
     )
 
-    # 合并已有成功记录
+    # 合并已有成功记录到结果中（用于最终统计）
     result_map = {r["url"]: r for r in results}
     for url in already_success:
         if url not in result_map:
             result_map[url] = existing[url]
+            # 补写已有成功记录到 CSV
+            save_results([existing[url]], output_path, mode="a")
 
-    # 重新写入完整结果
-    if Path(output_path).exists():
-        Path(output_path).unlink()
-    save_results([], output_path, mode="w")
-    save_results(list(result_map.values()), output_path, mode="a")
-
-    print(f"\n结果已保存: {output_path}")
+    print(f"\n结果已保存: {output_path}（仅成功数据）")
     _print_final_stats(urls, result_map)
 
 
@@ -144,8 +142,15 @@ def main():
     parser.add_argument("--input", "-i", help="输入文件路径", default=config.DEFAULT_INPUT_FILE)
     parser.add_argument("--output", "-o", help="输出文件路径", default=config.DEFAULT_OUTPUT_FILE)
     parser.add_argument("--workers", "-w", type=int, help="并发线程数", default=10)
+    parser.add_argument("--retries", "-r", type=int, help="轮次重试次数（默认 3）", default=3)
     parser.add_argument("--proxy", help="代理服务器地址", default=config.PROXY_SERVER)
+    parser.add_argument("--diagnose", "-d", help="诊断模式目录（默认 diagnose）", default="diagnose")
+    parser.add_argument("--no-diagnose", action="store_true", help="禁用诊断模式")
     args = parser.parse_args()
+
+    from crawler_http import _DIAGNOSE_DIR as diag_ref
+    import crawler_http
+    crawler_http._DIAGNOSE_DIR = None if args.no_diagnose else args.diagnose
 
     if args.proxy:
         config.PROXY_SERVER = args.proxy
@@ -157,7 +162,12 @@ def main():
     urls = load_urls(args.input)
     print(f"加载到 {len(urls)} 个 URL")
 
-    run_crawler(urls, output_path=args.output, max_workers=args.workers)
+    run_crawler(
+        urls,
+        output_path=args.output,
+        max_workers=args.workers,
+        max_rounds=args.retries + 1,
+    )
 
 
 if __name__ == "__main__":
