@@ -400,14 +400,16 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
     availability_text = availability_el.get_text(separator=' ', strip=True).lower() if availability_el else ''
     title_text = (result["title"] or '').lower()
 
+    page_is_unavailable = False
     unavailable_indicators = ['currently unavailable', 'temporarily out of stock']
     if any(ind in availability_text for ind in unavailable_indicators):
+        page_is_unavailable = True
         result["pageStatus"] = "unavailable"
-        return result
-    # 如果 availability 区域找不到，退而检查标题（某些下架商品标题会变）
-    if 'currently unavailable' in title_text:
+        # 不直接 return：某些 unavailable 页面仍包含 seller 信息
+    elif 'currently unavailable' in title_text:
+        page_is_unavailable = True
         result["pageStatus"] = "unavailable"
-        return result
+        # 不直接 return
 
     if 'page not found' in title_text or 'sorry, we just need to make sure' in body_text:
         result["pageStatus"] = "page_not_found"
@@ -509,5 +511,11 @@ def extract_seller_from_html(html: str, url: str = "") -> Dict[str, Any]:
         result["pageStatus"] = "normal"
         if result["extractionMethod"]:
             result["extractionMethod"] = result["extractionMethod"] + "_on_incomplete"
+
+    # 如果页面被标记为 unavailable 但最终提取到了 seller_id，也视为成功
+    if page_is_unavailable and result["sellerId"]:
+        result["pageStatus"] = "normal"
+        if result["extractionMethod"]:
+            result["extractionMethod"] = result["extractionMethod"] + "_on_unavailable"
 
     return result
