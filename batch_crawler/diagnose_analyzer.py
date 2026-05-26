@@ -1,6 +1,7 @@
 """
-诊断分析工具 —— 分析 no_seller_id 的 HTML 样本
+诊断分析工具 —— 分析失败的 HTML 样本
 提取页面特征，帮助优化解析策略
+支持分析：no_seller_id / incomplete_page / captcha / failed 等
 """
 
 import re
@@ -18,6 +19,7 @@ def analyze_single_html(filepath: Path) -> dict:
 
     features = {
         "filename": filepath.name,
+        "status_from_filename": "",
         "title": "",
         "has_merchant_info": False,
         "merchant_info_id": "",
@@ -34,12 +36,62 @@ def analyze_single_html(filepath: Path) -> dict:
         "seller_links": [],
         "page_type": "unknown",
         "is_amazon_fulfilled": False,
+        # captcha 相关
+        "has_captcha_text": False,
+        "captcha_indicators": [],
+        "has_captcha_form": False,
+        "has_captcha_image": False,
+        # 页面完整性
+        "has_product_title": False,
+        "has_price": False,
+        "has_buy_button": False,
+        "html_size_kb": 0,
     }
+
+    # 从文件名提取状态
+    fname = filepath.name
+    if '_' in fname:
+        features["status_from_filename"] = fname.split('_')[0]
 
     # 标题
     title_tag = soup.find('title')
     if title_tag:
         features["title"] = title_tag.get_text(strip=True)[:100]
+
+    # 页面大小
+    features["html_size_kb"] = round(len(html) / 1024, 1)
+
+    # 页面完整性检查
+    features["has_product_title"] = bool(
+        soup.find(id='productTitle') or soup.find(id='title') or soup.find('h1')
+    )
+    features["has_price"] = bool(
+        soup.find(id='corePrice_feature_div') or soup.find(class_=re.compile(r'a-price', re.I))
+    )
+    features["has_buy_button"] = bool(
+        soup.find(id='add-to-cart-button') or soup.find(id='submit.add-to-cart')
+    )
+
+    # captcha 检测
+    text_lower = soup.get_text(separator=' ', strip=True).lower()
+    captcha_keywords = [
+        'verify you are a human', 'captcha', 'robot check',
+        'type the characters', 'security check', 'sorry, we just need to make sure',
+        'enter the characters', 'type the letters',
+    ]
+    for kw in captcha_keywords:
+        if kw in text_lower:
+            features["has_captcha_text"] = True
+            features["captcha_indicators"].append(kw)
+
+    features["has_captcha_form"] = bool(
+        soup.find('form', action=re.compile(r'captcha', re.I)) or
+        soup.find('input', {'name': re.compile(r'captcha', re.I)})
+    )
+    features["has_captcha_image"] = bool(
+        soup.find('img', src=re.compile(r'captcha', re.I)) or
+        soup.find('img', alt=re.compile(r'captcha', re.I))
+    )
 
     # 页面类型判断
     text = soup.get_text(separator=' ', strip=True).lower()
@@ -162,6 +214,25 @@ def analyze_directory(diagnose_dir: str):
     for pt, cnt in page_types.most_common():
         print(f"  {pt}: {cnt}")
 
+    # 按状态分组统计
+    status_groups = defaultdict(list)
+    for f in all_features:
+        status_groups[f["status_from_filename"]].append(f)
+
+    print(f"\n按失败状态分布:")
+    for status, items in sorted(status_groups.items(), key=lambda x: -len(x[1])):
+        print(f"  {status}: {len(items)}")
+
+    print(f"\n页面完整性检查:")
+    print(f"  有商品标题: {sum(1 for f in all_features if f['has_product_title'])}/{len(all_features)}")
+    print(f"  有价格: {sum(1 for f in all_features if f['has_price'])}/{len(all_features)}")
+    print(f"  有购买按钮: {sum(1 for f in all_features if f['has_buy_button'])}/{len(all_features)}")
+
+    print(f"\nCaptcha 检测:")
+    print(f"  含 captcha 文本: {sum(1 for f in all_features if f['has_captcha_text'])}/{len(all_features)}")
+    print(f"  含 captcha 表单: {sum(1 for f in all_features if f['has_captcha_form'])}/{len(all_features)}")
+    print(f"  含 captcha 图片: {sum(1 for f in all_features if f['has_captcha_image'])}/{len(all_features)}")
+
     print(f"\n有 merchant-info 区域: {sum(1 for f in all_features if f['has_merchant_info'])}/{len(all_features)}")
     print(f"有 buybox: {sum(1 for f in all_features if f['has_buybox'])}/{len(all_features)}")
     print(f"有 tabular buybox: {sum(1 for f in all_features if f['has_tabular_buybox'])}/{len(all_features)}")
@@ -170,6 +241,7 @@ def analyze_directory(diagnose_dir: str):
     print(f"Hidden input 含 merchant: {sum(1 for f in all_features if f['has_hidden_input_merchant'])}/{len(all_features)}")
     print(f"有 data-* 属性: {sum(1 for f in all_features if f['has_data_attr'])}/{len(all_features)}")
     print(f"Amazon 自营: {sum(1 for f in all_features if f['is_amazon_fulfilled'])}/{len(all_features)}")
+    print(f"平均 HTML 大小: {sum(f['html_size_kb'] for f in all_features) / len(all_features):.1f} KB")
 
     # Script 中的 key 分布
     all_script_keys = []
@@ -198,21 +270,22 @@ def analyze_directory(diagnose_dir: str):
         for attr, cnt in Counter(all_data_attrs).most_common(20):
             print(f"  {attr}: {cnt}")
 
+    # Captcha 样本详情
+    captcha_samples = [f for f in all_features if f["has_captcha_text"] or f["has_captcha_form"] or f["has_captcha_image"]]
+    if captcha_samples:
+        print(f"\n--- Captcha 样本详情 ({len(captcha_samples)} 个) ---")
+        for f in captcha_samples:
+            print(f"  {f['filename']}: {f['title'][:60]}...")
+            print(f"    HTML大小: {f['html_size_kb']} KB | 标题: {f['has_product_title']} | 价格: {f['has_price']} | 购买按钮: {f['has_buy_button']}")
+            if f["captcha_indicators"]:
+                print(f"    触发词: {', '.join(f['captcha_indicators'])}")
+
     # 没有 merchant-info 的样本
     no_merchant = [f for f in all_features if not f["has_merchant_info"]]
     if no_merchant:
         print(f"\n--- 没有 merchant-info 区域的 {len(no_merchant)} 个样本 ---")
         for f in no_merchant[:5]:
             print(f"  {f['filename']}: {f['title'][:60]}...")
-
-    # 有 Sold by 文本但无 ID 的样本
-    sold_by_no_id = [f for f in all_features if f["has_sold_by_text"] and not f["is_amazon_fulfilled"]]
-    if sold_by_no_id:
-        print(f"\n--- 有 Sold by 文本但可能无 ID 的 {len(sold_by_no_id)} 个样本 (展示前 5 个) ---")
-        for f in sold_by_no_id[:5]:
-            print(f"  {f['filename']}:")
-            for m in f["sold_by_matches"]:
-                print(f"    Sold by: {m}")
 
     print("\n" + "=" * 60)
     print("分析完成。根据以上特征，可针对性补充 extract_seller_http.py 的解析策略。")

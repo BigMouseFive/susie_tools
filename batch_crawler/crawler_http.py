@@ -59,8 +59,15 @@ def get_random_headers(url: str = "") -> Dict[str, str]:
     return headers
 
 
-def _get_session() -> requests.Session:
+def _get_session(force_refresh: bool = False) -> requests.Session:
     """获取当前线程的 curl_cffi Session（模拟 Chrome 124）"""
+    if force_refresh and hasattr(_thread_local, "session"):
+        try:
+            _thread_local.session.close()
+        except Exception:
+            pass
+        delattr(_thread_local, "session")
+
     if not hasattr(_thread_local, "session"):
         _thread_local.session = requests.Session(impersonate="chrome124")
         if config.PROXY_SERVER:
@@ -69,6 +76,17 @@ def _get_session() -> requests.Session:
                 "https": config.PROXY_SERVER,
             }
     return _thread_local.session
+
+
+def _refresh_session():
+    """强制刷新当前线程的 Session（用于 captcha 后或定期轮换）"""
+    _get_session(force_refresh=True)
+
+
+def _maybe_refresh_session(urls_processed: int, refresh_every: int = 15):
+    """每处理 N 个 URL 后自动刷新 Session"""
+    if urls_processed > 0 and urls_processed % refresh_every == 0:
+        _refresh_session()
 
 
 _DIAGNOSE_DIR = None  # 诊断目录
@@ -114,6 +132,7 @@ def process_single_url_http(
     time.sleep(delay)
 
     session = _get_session()
+    html = ""  # 用于 diagnose 保存
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -147,6 +166,13 @@ def process_single_url_http(
                 result["status"] = "unavailable"
                 result["error"] = "商品当前不可用"
             elif page_status == "captcha":
+                # captcha：刷新 Session + 超长延迟后重试
+                if attempt < max_retries:
+                    result["error"] = f"第 {attempt} 次遇到验证码，刷新 Session 后重试..."
+                    _refresh_session()
+                    retry_delay = 10 + random.uniform(5, 15)
+                    time.sleep(retry_delay)
+                    continue
                 result["status"] = "captcha"
                 result["error"] = "遇到验证码/机器人检测"
             elif page_status == "incomplete_page":
@@ -158,16 +184,16 @@ def process_single_url_http(
                     continue  # 进入下一次重试
                 result["status"] = "incomplete_page"
                 result["error"] = "页面内容不完整，可能需要浏览器渲染"
-                if _DIAGNOSE_DIR:
-                    _save_diagnose_html(url, html, "incomplete_page")
             elif result["seller_id"]:
                 result["status"] = "success"
                 result["error"] = ""
             else:
                 result["status"] = "no_seller_id"
                 result["error"] = "页面中未检测到 Seller ID"
-                if _DIAGNOSE_DIR:
-                    _save_diagnose_html(url, html, "no_seller_id")
+
+            # 保存 diagnose（所有非 success 状态）
+            if _DIAGNOSE_DIR and result["status"] != "success" and html:
+                _save_diagnose_html(url, html, result["status"])
 
             return result
 
@@ -182,6 +208,10 @@ def process_single_url_http(
             else:
                 result["status"] = "failed"
                 result["error"] = f"重试 {max_retries} 次后仍失败: {err_msg}"
+
+    # 循环结束后（所有重试耗尽），保存 diagnose
+    if _DIAGNOSE_DIR and result["status"] != "success" and html:
+        _save_diagnose_html(url, html, result["status"])
 
     return result
 
@@ -211,9 +241,11 @@ def _run_single_round(
             unit="页",
         )
         fail_count = 0
+        processed_count = 0
 
         for future in as_completed(future_to_url):
             result = future.result()
+            processed_count += 1
             if result.get("status") == "success" and result.get("seller_id"):
                 success_results.append(result)
             else:
@@ -221,6 +253,9 @@ def _run_single_round(
                 fail_count += 1
             pbar.set_postfix(failed=fail_count)
             pbar.update(1)
+
+            # Session 定期刷新（线程安全：每个线程独立计数）
+            _maybe_refresh_session(processed_count, refresh_every=15)
 
         pbar.close()
 
