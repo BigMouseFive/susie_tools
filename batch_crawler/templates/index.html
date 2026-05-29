@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Seller ID 提取工具</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕷️ Amazon Seller ID 提取工具</h1>
+            <p class="subtitle">本地队列式批量爬虫，串行执行，稳定可靠</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- 上传区 -->
+            <section class="card upload-card">
+                <h2>📤 上传文件</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".csv,.txt" hidden>
+                    <div class="upload-placeholder">
+                        <span class="upload-icon">📎</span>
+                        <p>点击或拖拽上传 CSV / TXT</p>
+                        <p class="upload-hint">支持 url 列自动识别，每行一个 URL</p>
+                    </div>
+                </div>
+                <div class="file-info" id="fileInfo" style="display:none;">
+                    <span id="fileName"></span>
+                    <button class="btn btn-primary" id="startBtn">开始提取</button>
+                </div>
+                <div class="upload-status" id="uploadStatus"></div>
+            </section>
+
+            <!-- 实时进度 -->
+            <section class="card status-card">
+                <h2>📊 实时状态</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="status-label">队列中</span>
+                        <span class="status-value" id="queueSize">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">运行中</span>
+                        <span class="status-value" id="runningCount">0</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">已完成</span>
+                        <span class="status-value" id="completedCount">0</span>
+                    </div>
+                </div>
+                <div class="current-task" id="currentTask">
+                    <p class="idle-text">暂无运行中的任务</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- 任务列表 -->
+        <section class="card jobs-card">
+            <h2>📋 任务列表</h2>
+            <div class="table-wrapper">
+                <table id="jobsTable">
+                    <thead>
+                        <tr>
+                            <th>任务名</th>
+                            <th>总数</th>
+                            <th>成功</th>
+                            <th>失败</th>
+                            <th>进度</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobsTbody">
+                        <tr class="empty-row">
+                            <td colspan="7">暂无任务，请上传文件开始</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
