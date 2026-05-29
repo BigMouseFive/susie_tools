@@ -76,7 +76,9 @@ def api_upload():
     if not urls:
         return jsonify({"error": "未找到有效 URL"}), 400
 
-    job_id = task_queue.add_job(urls, name=f"batch_{len(urls)}")
+    from datetime import datetime
+    ts = datetime.now().strftime("%m%d_%H%M%S")
+    job_id = task_queue.add_job(urls, name=f"batch_{len(urls)}_{ts}")
 
     return jsonify({
         "success": True,
@@ -192,4 +194,4 @@ init_app()
 
 if __name__ == "__main__":
     # 本地开发模式
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=5555, debug=False, threaded=True)

@@ -81,7 +81,7 @@ def main():
     import threading
 
     def run_flask():
-        web_app.app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+        web_app.app.run(host="0.0.0.0", port=5555, debug=False, threaded=True)
 
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
