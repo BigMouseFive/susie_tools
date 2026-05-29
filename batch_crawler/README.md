@@ -31,6 +31,20 @@ pip install -r requirements.txt
 
 ## 启动
 
+### 方式一：双击启动（推荐，无需命令行）
+
+**macOS**
+1. 确保已安装依赖（首次使用前执行一次 `pip install -r requirements.txt`）
+2. 双击项目目录中的 **`Start.command`**
+3. 首次运行时 macOS 可能会提示安全警告，前往「系统设置 → 隐私与安全性」允许即可
+4. 脚本会自动启动服务并打开浏览器
+
+**Windows**
+1. 确保已安装依赖
+2. 双击 **`start.py`**（需系统已关联 Python 打开方式）
+
+### 方式二：命令行启动
+
 ```bash
 python web_app.py
 ```
