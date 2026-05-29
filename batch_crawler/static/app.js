@@ -3,10 +3,7 @@ let jobsData = [];      // 当前任务列表缓存
 let sseSource = null;   // EventSource 实例
 
 // ===== DOM 元素 =====
-const uploadArea = document.getElementById('uploadArea');
-const fileInput = document.getElementById('fileInput');
-const fileInfo = document.getElementById('fileInfo');
-const fileNameEl = document.getElementById('fileName');
+const urlInput = document.getElementById('urlInput');
 const startBtn = document.getElementById('startBtn');
 const uploadStatus = document.getElementById('uploadStatus');
 
@@ -18,71 +15,45 @@ const jobsTbody = document.getElementById('jobsTbody');
 
 // ===== 初始化 =====
 document.addEventListener('DOMContentLoaded', () => {
-    initUpload();
+    initInput();
     loadJobs();
     connectSSE();
 });
 
-// ===== 上传交互 =====
-function initUpload() {
-    uploadArea.addEventListener('click', () => fileInput.click());
-
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        uploadArea.classList.add('dragover');
-    });
-    uploadArea.addEventListener('dragleave', () => {
-        uploadArea.classList.remove('dragover');
-    });
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) handleFile(files[0]);
-    });
-
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
-    });
-
+// ===== 输入交互 =====
+function initInput() {
     startBtn.addEventListener('click', startUpload);
-}
-
-function handleFile(file) {
-    const ok = file.name.endsWith('.csv') || file.name.endsWith('.txt');
-    if (!ok) {
-        showStatus('仅支持 .csv 和 .txt 格式', 'error');
-        return;
-    }
-    fileInput._selectedFile = file;
-    fileNameEl.textContent = file.name;
-    fileInfo.style.display = 'flex';
-    uploadStatus.textContent = '';
-    uploadStatus.className = 'upload-status';
+    urlInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            startUpload();
+        }
+    });
 }
 
 async function startUpload() {
-    const file = fileInput._selectedFile;
-    if (!file) return;
+    const raw = urlInput.value.trim();
+    if (!raw) {
+        showStatus('请输入至少一个 URL', 'error');
+        return;
+    }
 
     startBtn.disabled = true;
-    startBtn.textContent = '上传中...';
-    showStatus('正在解析并创建任务...', 'info');
-
-    const form = new FormData();
-    form.append('file', file);
+    startBtn.textContent = '提交中...';
+    showStatus('正在创建任务...', 'info');
 
     try {
-        const res = await fetch('/api/upload', { method: 'POST', body: form });
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls: raw }),
+        });
         const data = await res.json();
         if (data.success) {
             showStatus(`任务创建成功: ${data.total} 个 URL 已入队`, 'success');
-            fileInput._selectedFile = null;
-            fileInfo.style.display = 'none';
-            fileInput.value = '';
+            urlInput.value = '';
             loadJobs();
         } else {
-            showStatus(data.error || '上传失败', 'error');
+            showStatus(data.error || '创建失败', 'error');
         }
     } catch (err) {
         showStatus('网络错误: ' + err.message, 'error');
@@ -245,7 +216,7 @@ function addOrUpdateJob(job) {
 
 function renderJobs() {
     if (jobsData.length === 0) {
-        jobsTbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无任务，请上传文件开始</td></tr>';
+        jobsTbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无任务，请输入 URL 开始</td></tr>';
         return;
     }
 

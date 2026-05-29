@@ -16,17 +16,9 @@
         <div class="main-grid">
             <!-- 上传区 -->
             <section class="card upload-card">
-                <h2>📤 上传文件</h2>
-                <div class="upload-area" id="uploadArea">
-                    <input type="file" id="fileInput" accept=".csv,.txt" hidden>
-                    <div class="upload-placeholder">
-                        <span class="upload-icon">📎</span>
-                        <p>点击或拖拽上传 CSV / TXT</p>
-                        <p class="upload-hint">支持 url 列自动识别，每行一个 URL</p>
-                    </div>
-                </div>
-                <div class="file-info" id="fileInfo" style="display:none;">
-                    <span id="fileName"></span>
+                <h2>📤 输入链接</h2>
+                <textarea id="urlInput" class="url-textarea" placeholder="每行粘贴一个 Amazon 商品链接&#10;https://www.amazon.ae/dp/xxxxx&#10;https://www.amazon.ae/dp/yyyyy" rows="8"></textarea>
+                <div class="input-actions">
                     <button class="btn btn-primary" id="startBtn">开始提取</button>
                 </div>
                 <div class="upload-status" id="uploadStatus"></div>

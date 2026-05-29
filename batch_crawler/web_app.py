@@ -58,36 +58,25 @@ def index():
 
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
-    """上传 CSV/TXT 文件，创建新任务并入队"""
-    if "file" not in request.files:
-        return jsonify({"error": "未找到文件"}), 400
+    """接收多行 URL 文本，创建新任务并入队"""
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("urls") or "").strip()
 
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"error": "文件名不能为空"}), 400
+    if not raw:
+        return jsonify({"error": "请输入 URL"}), 400
 
-    # 保存到临时文件
-    suffix = Path(file.filename).suffix.lower()
-    if suffix not in (".csv", ".txt"):
-        return jsonify({"error": "仅支持 .csv 和 .txt 格式"}), 400
-
-    tmp_name = f"upload_{int(time.time() * 1000)}{suffix}"
-    tmp_path = Path(config.INPUT_DIR) / tmp_name
-    tmp_path.parent.mkdir(parents=True, exist_ok=True)
-    file.save(str(tmp_path))
-
-    try:
-        urls = load_urls(str(tmp_path))
-    except Exception as e:
-        tmp_path.unlink(missing_ok=True)
-        return jsonify({"error": f"文件解析失败: {e}"}), 400
+    urls = []
+    seen = set()
+    for line in raw.splitlines():
+        u = line.strip()
+        if u and u not in seen:
+            seen.add(u)
+            urls.append(u)
 
     if not urls:
-        tmp_path.unlink(missing_ok=True)
-        return jsonify({"error": "文件中未找到有效 URL"}), 400
+        return jsonify({"error": "未找到有效 URL"}), 400
 
-    job_id = task_queue.add_job(urls, name=file.filename)
-    tmp_path.unlink(missing_ok=True)
+    job_id = task_queue.add_job(urls, name=f"batch_{len(urls)}")
 
     return jsonify({
         "success": True,

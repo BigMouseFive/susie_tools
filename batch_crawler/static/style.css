@@ -76,41 +76,32 @@ header h1 {
     transition: border-color 0.2s, background 0.2s;
 }
 
-.upload-area:hover,
-.upload-area.dragover {
-    border-color: #4a90d9;
-    background: #f0f7ff;
-}
-
-.upload-icon {
-    font-size: 2rem;
-    display: block;
-    margin-bottom: 8px;
-}
-
-.upload-placeholder p {
-    color: #666;
-    font-size: 0.95rem;
-}
-
-.upload-hint {
-    color: #aaa;
-    font-size: 0.8rem;
-    margin-top: 4px;
-}
-
-.file-info {
-    margin-top: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-}
-
-#fileName {
+.url-textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
     font-size: 0.9rem;
-    color: #555;
-    word-break: break-all;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 120px;
+    line-height: 1.5;
+    color: #333;
+    background: #fafbfc;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.url-textarea:focus {
+    outline: none;
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+    background: #fff;
+}
+
+.input-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
 }
 
 .upload-status {
