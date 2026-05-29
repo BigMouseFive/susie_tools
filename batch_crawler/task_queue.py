@@ -45,17 +45,19 @@ class Job:
 
 
 class TaskQueue:
-    """全局任务队列，单线程串行消费"""
+    """全局任务队列，多线程并发消费"""
 
-    def __init__(self):
+    def __init__(self, max_workers: int = 1):
         self._queue: queue.Queue = queue.Queue()
         self._jobs: Dict[str, Job] = {}
         self._current: Optional[Dict[str, Any]] = None
-        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_threads: list[threading.Thread] = []
+        self._max_workers = max(1, max_workers)
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
-        self._session_counter = 0
         self._event_callback: Optional[Callable[[str, dict], None]] = None
+        # 每个线程独立的 session 计数器
+        self._thread_counters = threading.local()
 
         ensure_dirs()
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -221,18 +223,23 @@ class TaskQueue:
 
     def start_worker(self):
         """启动后台工作线程"""
-        if self._worker_thread and self._worker_thread.is_alive():
+        # 清理已停止的线程
+        self._worker_threads = [t for t in self._worker_threads if t.is_alive()]
+        if self._worker_threads:
             return
         self._stop_event.clear()
-        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-        self._worker_thread.start()
-        print("[TaskQueue] 工作线程已启动")
+        for i in range(self._max_workers):
+            t = threading.Thread(target=self._worker_loop, daemon=True, name=f"Worker-{i+1}")
+            t.start()
+            self._worker_threads.append(t)
+        print(f"[TaskQueue] {self._max_workers} 个工作线程已启动")
 
     def stop_worker(self):
         """停止后台工作线程"""
         self._stop_event.set()
-        if self._worker_thread:
-            self._worker_thread.join(timeout=5)
+        for t in self._worker_threads:
+            t.join(timeout=5)
+        self._worker_threads = []
 
     def _worker_loop(self):
         """后台消费者主循环：严格串行逐个处理 URL"""
@@ -311,9 +318,10 @@ class TaskQueue:
                     "job_total": job_total,
                 })
 
-            # Session 定期刷新（串行模式下每 15 个 URL 刷新一次）
-            self._session_counter += 1
-            if self._session_counter % 15 == 0:
+            # Session 定期刷新（每个线程独立计数，每 15 个 URL 刷新一次）
+            cnt = getattr(self._thread_counters, 'count', 0) + 1
+            self._thread_counters.count = cnt
+            if cnt % 15 == 0:
                 try:
                     _refresh_session()
                 except Exception:

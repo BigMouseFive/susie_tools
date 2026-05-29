@@ -23,6 +23,10 @@ PAGE_TIMEOUT = int(os.getenv("PAGE_TIMEOUT", "25000"))
 # ===================== 重试配置 =====================
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "3"))
 
+# ===================== 并发配置 =====================
+# 默认并行 worker 数量（Web 模式）
+DEFAULT_WORKERS = int(os.getenv("DEFAULT_WORKERS", "5"))
+
 # ===================== 代理配置 =====================
 # 代理服务器地址，格式: http://user:pass@host:port
 # 留空则不使用代理

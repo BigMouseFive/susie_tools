@@ -19,7 +19,7 @@ app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB 上传限制
 
 # ========== 全局队列实例 ==========
-task_queue = TaskQueue()
+task_queue = TaskQueue(max_workers=config.DEFAULT_WORKERS)
 
 # SSE 客户端队列列表
 _sse_clients: list[py_queue.Queue] = []
