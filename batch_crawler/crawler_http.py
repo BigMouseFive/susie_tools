@@ -124,6 +124,14 @@ def process_single_url_http(
         "status": "pending",
         "error": "",
         "title": "",
+        "bullet_1": "",
+        "bullet_2": "",
+        "bullet_3": "",
+        "bullet_4": "",
+        "bullet_5": "",
+        "main_image_url": "",
+        "category_path": "",
+        "category_id": "",
         "page_status": "",
     }
 
@@ -153,6 +161,14 @@ def process_single_url_http(
             result["seller_id"] = (data.get("sellerId") or "").strip()
             result["seller_name"] = (data.get("sellerName") or "").strip()
             result["title"] = (data.get("title") or "").strip()
+            bullets = data.get("bullets") or []
+            for i in range(5):
+                result[f"bullet_{i + 1}"] = (
+                    bullets[i].strip() if i < len(bullets) else ""
+                )
+            result["main_image_url"] = (data.get("mainImageUrl") or "").strip()
+            result["category_path"] = (data.get("categoryPath") or "").strip()
+            result["category_id"] = (data.get("categoryId") or "").strip()
             result["asin"] = (data.get("asin") or result["asin"] or "").strip()
             result["extraction_method"] = data.get("extractionMethod", "")
             result["is_amazon"] = bool(data.get("isAmazonFulfilled"))

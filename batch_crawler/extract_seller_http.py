@@ -9,6 +9,8 @@ import json
 from typing import Optional, Dict, Any
 from bs4 import BeautifulSoup
 
+from extract_product_http import extract_product_fields
+
 
 def extract_from_href(href: str) -> Optional[str]:
     """从链接 href 中提取 seller/merchant ID"""
@@ -364,6 +366,10 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
         "sellerName": None,
         "url": url,
         "title": None,
+        "bullets": [],
+        "mainImageUrl": "",
+        "categoryPath": "",
+        "categoryId": "",
         "pageStatus": "normal",
         "isAmazonFulfilled": False,
         "extractionMethod": None,
@@ -375,10 +381,16 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
 
     soup = BeautifulSoup(html, 'lxml')
 
-    # 提取标题
-    title_tag = soup.find('title')
-    if title_tag:
-        result["title"] = title_tag.get_text(strip=True)
+    product_data = extract_product_fields(soup, html)
+    result["title"] = product_data.get("productTitle") or None
+    result["bullets"] = product_data.get("bullets") or []
+    result["mainImageUrl"] = product_data.get("mainImageUrl") or ""
+    result["categoryPath"] = product_data.get("categoryPath") or ""
+    result["categoryId"] = product_data.get("categoryId") or ""
+
+    doc_title_tag = soup.find('title')
+    doc_title_text = doc_title_tag.get_text(strip=True).lower() if doc_title_tag else ''
+    product_title_text = (result["title"] or '').lower()
 
     # 检测页面是否不完整（反爬返回的假页面）
     page_is_incomplete = is_incomplete_page(soup)
@@ -397,7 +409,6 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
     # 避免把推荐商品/页脚中的 "currently unavailable" 误判
     availability_el = soup.find(id='availability') or soup.find(id='availability_feature_div')
     availability_text = availability_el.get_text(separator=' ', strip=True).lower() if availability_el else ''
-    title_text = (result["title"] or '').lower()
 
     page_is_unavailable = False
     unavailable_indicators = ['currently unavailable', 'temporarily out of stock']
@@ -405,12 +416,12 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
         page_is_unavailable = True
         result["pageStatus"] = "unavailable"
         # 不直接 return：某些 unavailable 页面仍包含 seller 信息
-    elif 'currently unavailable' in title_text:
+    elif 'currently unavailable' in product_title_text or 'currently unavailable' in doc_title_text:
         page_is_unavailable = True
         result["pageStatus"] = "unavailable"
         # 不直接 return
 
-    if 'page not found' in title_text or 'sorry, we just need to make sure' in body_text:
+    if 'page not found' in doc_title_text or 'sorry, we just need to make sure' in body_text:
         result["pageStatus"] = "page_not_found"
         return result
     # Captcha 检测：需要同时满足文本关键词 + 页面特征

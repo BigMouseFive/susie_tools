@@ -104,7 +104,11 @@ https://www.amazon.ae/dp/B07MWHDHT5?psc=1
 | `seller_name` | 卖家名称 |
 | `status` | 处理状态：`success` / `no_seller_id` / `captcha` / `incomplete_page` / `unavailable` / `failed` |
 | `error` | 错误信息（如有） |
-| `title` | 商品标题 |
+| `title` | 商品标题（`#productTitle`，非浏览器标签页标题） |
+| `bullet_1` ~ `bullet_5` | 五点描述（`#feature-bullets`，最多 5 条） |
+| `main_image_url` | 主图原图 URL（优先 `hiRes` 高清源，去尺寸后缀） |
+| `category_path` | 产品类目完整路径（面包屑，如 `Fashion > Men > Watches`） |
+| `category_id` | 叶子类目 Browse Node ID（面包屑最后一级 `node=` 参数） |
 | `page_status` | 页面状态：`normal` / `captcha` / `unavailable` 等 |
 
 ### 5. 取消任务
@@ -128,7 +132,8 @@ https://www.amazon.ae/dp/B07MWHDHT5?psc=1
 ├── web_app.py              # Flask Web 应用主入口
 ├── task_queue.py           # 任务队列引擎（串行执行 + 持久化）
 ├── crawler_http.py         # HTTP 爬虫核心（curl_cffi）
-├── extract_seller_http.py  # HTML 解析引擎（7 种提取策略）
+├── extract_seller_http.py  # HTML 解析引擎（Seller ID + 商品字段）
+├── extract_product_http.py # 商品标题、五点、主图提取
 ├── utils.py                # 工具函数（CSV 读写、ASIN 解析等）
 ├── config.py               # 配置文件（延迟、超时、代理等）
 ├── requirements.txt
