@@ -368,6 +368,7 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
         "title": None,
         "bullets": [],
         "mainImageUrl": "",
+        "mainImages": [],
         "categoryPath": "",
         "categoryId": "",
         "pageStatus": "normal",
@@ -385,6 +386,7 @@ def _extract_seller_from_html_impl(html: str, url: str = "") -> Dict[str, Any]:
     result["title"] = product_data.get("productTitle") or None
     result["bullets"] = product_data.get("bullets") or []
     result["mainImageUrl"] = product_data.get("mainImageUrl") or ""
+    result["mainImages"] = product_data.get("mainImages") or []
     result["categoryPath"] = product_data.get("categoryPath") or ""
     result["categoryId"] = product_data.get("categoryId") or ""
 

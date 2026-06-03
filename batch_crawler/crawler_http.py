@@ -130,6 +130,15 @@ def process_single_url_http(
         "bullet_4": "",
         "bullet_5": "",
         "main_image_url": "",
+        "image_2": "",
+        "image_3": "",
+        "image_4": "",
+        "image_5": "",
+        "image_6": "",
+        "image_7": "",
+        "image_8": "",
+        "image_9": "",
+        "image_10": "",
         "category_path": "",
         "category_id": "",
         "page_status": "",
@@ -166,7 +175,17 @@ def process_single_url_http(
                 result[f"bullet_{i + 1}"] = (
                     bullets[i].strip() if i < len(bullets) else ""
                 )
-            result["main_image_url"] = (data.get("mainImageUrl") or "").strip()
+            images = data.get("mainImages") or []
+            if not images and data.get("mainImageUrl"):
+                images = [data.get("mainImageUrl")]
+            result["main_image_url"] = (
+                images[0].strip() if images else (data.get("mainImageUrl") or "").strip()
+            )
+            for i in range(2, 11):
+                idx = i - 1
+                result[f"image_{i}"] = (
+                    images[idx].strip() if idx < len(images) else ""
+                )
             result["category_path"] = (data.get("categoryPath") or "").strip()
             result["category_id"] = (data.get("categoryId") or "").strip()
             result["asin"] = (data.get("asin") or result["asin"] or "").strip()

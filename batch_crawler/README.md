@@ -106,7 +106,8 @@ https://www.amazon.ae/dp/B07MWHDHT5?psc=1
 | `error` | 错误信息（如有） |
 | `title` | 商品标题（`#productTitle`，非浏览器标签页标题） |
 | `bullet_1` ~ `bullet_5` | 五点描述（`#feature-bullets`，最多 5 条） |
-| `main_image_url` | 主图原图 URL（优先 `hiRes` 高清源，去尺寸后缀） |
+| `main_image_url` | 主图原图 URL（画廊第 1 张，优先 `hiRes` 高清源，去尺寸后缀） |
+| `image_2` ~ `image_10` | 产品图画廊其余原图（hiRes + 主图区 + 缩略图合并去重，最多共 10 张） |
 | `category_path` | 产品类目完整路径（面包屑，如 `Fashion > Men > Watches`） |
 | `category_id` | 叶子类目 Browse Node ID（面包屑最后一级 `node=` 参数） |
 | `page_status` | 页面状态：`normal` / `captcha` / `unavailable` 等 |

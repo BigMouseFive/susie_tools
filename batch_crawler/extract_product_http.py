@@ -26,6 +26,20 @@ ALT_IMAGE_SELECTORS = (
     "li.item.imageThumbnail img"
 )
 
+APLUS_SELECTORS = (
+    "#aplus",
+    "#aplus_feature_div",
+    "#aplusBrandStory_feature_div",
+    "#aplus3p_feature_div",
+    "#dpx-aplus-product-description_feature_div",
+    "#productDescription_feature_div",
+    "#productDescription",
+    ".aplus-v2",
+    ".aplus-module",
+)
+
+MAX_GALLERY_IMAGES = 10
+
 BREADCRUMB_CONTAINER_SELECTORS = (
     "#wayfinding-breadcrumbs_feature_div",
     "#wayfinding-breadcrumbs_container",
@@ -93,6 +107,9 @@ class ImageCollector:
     def values(self) -> List[str]:
         return list(self._map.values())
 
+    def keys(self) -> set[str]:
+        return set(self._map.keys())
+
 
 def _collect_from_img(img, collector: ImageCollector) -> None:
     collector.add(img.get("data-old-hires"))
@@ -118,7 +135,37 @@ def _extract_title(soup: BeautifulSoup) -> str:
     return ""
 
 
-def _extract_main_images(soup: BeautifulSoup, html: str) -> List[str]:
+def _extract_aplus_images(soup: BeautifulSoup) -> ImageCollector:
+    """A+ 区图片采集（用于从主图画廊中剔除营销图）"""
+    aplus_col = ImageCollector()
+    aplus_roots: set = set()
+    for sel in APLUS_SELECTORS:
+        for el in soup.select(sel):
+            aplus_roots.add(el)
+
+    for root in aplus_roots:
+        for img in root.find_all("img"):
+            aplus_col.add(img.get("src"))
+            aplus_col.add(img.get("data-src"))
+            aplus_col.add(img.get("data-a-hires"))
+            aplus_col.add(img.get("data-a-lazy-src"))
+        for el in root.select('[style*="background-image"]'):
+            style = el.get("style") or ""
+            m = re.search(
+                r'background-image:\s*url\(["\']?([^"\')]+)["\']?\)',
+                style,
+                re.I,
+            )
+            if m and m.group(1):
+                aplus_col.add(m.group(1))
+    return aplus_col
+
+
+def _extract_gallery_images(soup: BeautifulSoup, html: str) -> List[str]:
+    """
+    产品图画廊原图（hiRes + 主图 DOM + altImages，剔除 A+ 重复）
+    逻辑移植自 erp-plugin/popup/popup.js scrapeAmazonProduct
+    """
     main_col = ImageCollector()
 
     for m in HI_RES_RE.finditer(html):
@@ -127,12 +174,16 @@ def _extract_main_images(soup: BeautifulSoup, html: str) -> List[str]:
     for img in soup.select(MAIN_IMAGE_SELECTORS):
         _collect_from_img(img, main_col)
 
-    if not main_col.values():
-        for img in soup.select(ALT_IMAGE_SELECTORS):
-            main_col.add(img.get("src"))
-            main_col.add(img.get("data-src"))
+    for img in soup.select(ALT_IMAGE_SELECTORS):
+        _collect_from_img(img, main_col)
 
-    return main_col.values()
+    aplus_col = _extract_aplus_images(soup)
+    aplus_keys = aplus_col.keys()
+    main_images = [
+        u for u in main_col.values()
+        if image_key(u) not in aplus_keys
+    ]
+    return main_images[:MAX_GALLERY_IMAGES]
 
 
 def _extract_category(soup: BeautifulSoup, html: str) -> tuple[str, str]:
@@ -202,15 +253,16 @@ def extract_product_fields(soup: BeautifulSoup, html: str) -> dict:
     从商品页 HTML 提取标题、五点、主图、类目路径与类目 ID
 
     Returns:
-        productTitle, bullets (list, max 5), mainImageUrl,
+        productTitle, bullets (list, max 5), mainImageUrl, mainImages,
         categoryPath, categoryId
     """
-    main_images = _extract_main_images(soup, html)
+    main_images = _extract_gallery_images(soup, html)
     category_path, category_id = _extract_category(soup, html)
     return {
         "productTitle": _extract_title(soup),
         "bullets": _extract_bullets(soup),
         "mainImageUrl": main_images[0] if main_images else "",
+        "mainImages": main_images,
         "categoryPath": category_path,
         "categoryId": category_id,
     }

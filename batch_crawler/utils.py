@@ -123,7 +123,10 @@ def save_results(rows: List[Dict[str, Any]], output_path: str = None, mode: str 
     fieldnames = [
         'url', 'asin', 'seller_id', 'seller_name', 'status', 'error',
         'title', 'bullet_1', 'bullet_2', 'bullet_3', 'bullet_4', 'bullet_5',
-        'main_image_url', 'category_path', 'category_id', 'page_status',
+        'main_image_url',
+        'image_2', 'image_3', 'image_4', 'image_5', 'image_6',
+        'image_7', 'image_8', 'image_9', 'image_10',
+        'category_path', 'category_id', 'page_status',
     ]
     # 确保字段顺序，补充缺失字段
     normalized = []
